@@ -3,21 +3,15 @@ require('dotenv').config(); // Load environment variables from .env file
 const express = require('express');
 const sql = require('mssql');
 const path = require('path');
-const cors = require('cors');
+// const cors = require('cors'); // --- DELETED LINE ---
 
 const app = express();
 const port = process.env.PORT || 8080;
 
-// --- CRITICAL CORS CONFIGURATION ---
-// Explicitly allow requests from the React Dev Server (port 3000)
-const corsOptions = {
-    origin: 'http://localhost:3000',
-    optionsSuccessStatus: 200 
-};
-app.use(cors(corsOptions)); // Apply the specific CORS options
-
 // Middleware to parse JSON
 app.use(express.json());
+// app.use(cors(corsOptions)); // --- DELETED LINE ---
+
 
 // --- Database Configuration ---
 const sqlConfig = {
@@ -108,8 +102,6 @@ app.post('/api/events', async (req, res) => {
 
     try {
         // --- CRITICAL FIX: Ensure time is NULL if not explicitly provided ---
-        // If the date picker provides a minimal date, the time should be NULL to avoid
-        // the "Invalid time" error.
         let timeValue = time;
         if (!timeValue || timeValue === '09:00' || timeValue.trim() === '') {
             timeValue = null; 
