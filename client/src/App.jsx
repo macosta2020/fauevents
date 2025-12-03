@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-// --- Event Card Component (unchanged) ---
+// --- Event Card Component ---
 const EventCard = ({ event }) => (
   <div className="p-4 bg-white rounded-xl shadow-md transition duration-300 hover:shadow-lg border border-gray-100">
     <h3 className="text-lg font-semibold text-gray-800">{event.title}</h3>
@@ -21,13 +21,8 @@ const EventCard = ({ event }) => (
 
 // --- Main Application Component ---
 const App = () => {
-  // CRITICAL FIX: The REACT_APP_API_URL should hold the absolute root path (e.g., https://events-api...)
-  // We MUST strip the '/api/events' part from the API_URL variable definition.
-  const API_ROOT = process.env.NODE_ENV === 'production' 
-    ? (process.env.REACT_APP_API_URL || '') // In production, use the absolute FQDN or empty string
-    : ''; // In development, use empty string; the fetch call below will use '/api/events' which proxies correctly.
-
-  const API_ROUTE = '/api/events'; // Define the endpoint path separately
+  // CRITICAL FIX: Always use the relative path. SWA handles the absolute routing.
+  const API_URL = '/api/events'; 
 
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -43,11 +38,10 @@ const App = () => {
     setLoading(true);
     setError(null);
     try {
-      // CORRECTED FETCH: Use API_ROOT + API_ROUTE
-      const response = await fetch(API_ROOT + API_ROUTE);
+      // CORRECTED FETCH: Use API_URL directly
+      const response = await fetch(API_URL);
       
       if (!response.ok) {
-        // If deployed and the status is 500, it means the backend failed.
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
@@ -55,7 +49,6 @@ const App = () => {
       setEvents(data);
     } catch (err) {
       setError(`Failed to fetch events from API: ${err.message}. Using mock data.`);
-      // Mock Data (if API is unreachable during local testing)
       setEvents([
         { id: 99, title: "Mock Team Sync", description: "Review Azure SQL Connection.", date: "2025-12-05", time: "10:00", userId: "local-dev" },
       ]);
@@ -82,8 +75,8 @@ const App = () => {
     setError(null);
 
     try {
-      // CORRECTED FETCH: Use API_ROOT + API_ROUTE
-      const response = await fetch(API_ROOT + API_ROUTE, {
+      // CORRECTED FETCH: Use API_URL directly
+      const response = await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newEvent),
@@ -93,7 +86,6 @@ const App = () => {
         throw new Error('Failed to add event to backend.');
       }
 
-      // Re-fetch all data to show the latest state from SQL
       await fetchEvents();
 
       // Clear form
@@ -117,9 +109,9 @@ const App = () => {
         {/* Header */}
         <header className="py-6 mb-8 border-b-2 border-indigo-100">
           <h1 className="text-3xl font-extrabold text-indigo-900 tracking-tight">
-            Cloud Schedule
+            FAU Events
           </h1>
-          <p className="text-gray-500 mt-1">Full-Stack Scheduler (React + Node/ACA + Azure SQL)</p>
+          <p className="text-gray-500 mt-1">Event Scheduler</p>
         </header>
 
         {/* Error/Loading Feedback */}
@@ -148,7 +140,7 @@ const App = () => {
                   id="title"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g., Final Project Demo"
+                  placeholder="e.g., Database Systems Exam"
                   className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
                   required
                 />
