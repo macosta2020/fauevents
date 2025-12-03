@@ -58,6 +58,16 @@ const App = () => {
   };
 
   useEffect(() => {
+    // --- STYLING FIX: Inject Tailwind CSS dynamically ---
+    // This ensures the styling loads even if the script tag in JSX is ignored by React.
+    const scriptId = 'tailwind-cdn';
+    if (!document.getElementById(scriptId)) {
+      const script = document.createElement('script');
+      script.id = scriptId;
+      script.src = "https://cdn.tailwindcss.com";
+      document.head.appendChild(script);
+    }
+
     fetchEvents();
   }, []);
 
@@ -103,7 +113,7 @@ const App = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-8 font-sans">
-      <script src="https://cdn.tailwindcss.com"></script>
+      {/* Removed inline script tag from here as it is now handled by useEffect */}
       <div className="max-w-6xl mx-auto">
 
         {/* Header */}
