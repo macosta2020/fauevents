@@ -22,7 +22,7 @@ const EventCard = ({ event }) => (
 // --- Main Application Component ---
 const App = () => {
   // The API endpoint. This will automatically route to the Node.js container in ACA.
-  const API_URL = '/api/events';
+  const API_URL = process.env.REACT_APP_API_URL || '/api/events';
 
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
