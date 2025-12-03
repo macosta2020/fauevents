@@ -1,0 +1,10 @@
+# Dependency directories
+/client/node_modules
+/server/node_modules
+
+# Build output
+/client/build
+/client/dist
+
+# Environment variables and secrets (CRITICAL: DO NOT COMMIT SECRETS)
+/server/.env
