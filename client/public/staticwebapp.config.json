@@ -1,0 +1,12 @@
+{
+  "routes": [
+    {
+      "route": "/api/*",
+      "allowedRoles": ["anonymous", "authenticated"],
+      "backend": "https://https://gentle-desert-06ad8771e.3.azurestaticapps.net/"
+    }
+  ],
+  "globalHeaders": {
+    "Access-Control-Allow-Origin": "*"
+  }
+}
