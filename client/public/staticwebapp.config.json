@@ -3,7 +3,7 @@
     {
       "route": "/api/*",
       "allowedRoles": ["anonymous", "authenticated"],
-      "backend": "https://https://gentle-desert-06ad8771e.3.azurestaticapps.net/"
+      "backend": "https://events-api.jollydesert-95ebe16b.westus2.azurecontainerapps.io"
     }
   ],
   "globalHeaders": {
