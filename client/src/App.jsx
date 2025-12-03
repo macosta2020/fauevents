@@ -21,11 +21,13 @@ const EventCard = ({ event }) => (
 
 // --- Main Application Component ---
 const App = () => {
-  // CRITICAL FIX: Ensure the variable is read. We'll rely on the SWA setting 
-  // in the live environment or the proxy path during local development.
-  const API_URL = process.env.NODE_ENV === 'production' 
-    ? (process.env.REACT_APP_API_URL || '/api/events') // Use the injected absolute URL in production
-    : '/api/events'; // Use relative proxy path in development (localhost:3000)
+  // CRITICAL FIX: The REACT_APP_API_URL should hold the absolute root path (e.g., https://events-api...)
+  // We MUST strip the '/api/events' part from the API_URL variable definition.
+  const API_ROOT = process.env.NODE_ENV === 'production' 
+    ? (process.env.REACT_APP_API_URL || '') // In production, use the absolute FQDN or empty string
+    : ''; // In development, use empty string; the fetch call below will use '/api/events' which proxies correctly.
+
+  const API_ROUTE = '/api/events'; // Define the endpoint path separately
 
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -41,9 +43,11 @@ const App = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(API_URL + '/api/events'); // Append /api/events here
+      // CORRECTED FETCH: Use API_ROOT + API_ROUTE
+      const response = await fetch(API_ROOT + API_ROUTE);
       
       if (!response.ok) {
+        // If deployed and the status is 500, it means the backend failed.
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
@@ -78,7 +82,8 @@ const App = () => {
     setError(null);
 
     try {
-      const response = await fetch(API_URL + '/api/events', { // Append /api/events here
+      // CORRECTED FETCH: Use API_ROOT + API_ROUTE
+      const response = await fetch(API_ROOT + API_ROUTE, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newEvent),
