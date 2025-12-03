@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-// --- Event Card Component ---
+// --- Event Card Component (unchanged) ---
 const EventCard = ({ event }) => (
   <div className="p-4 bg-white rounded-xl shadow-md transition duration-300 hover:shadow-lg border border-gray-100">
     <h3 className="text-lg font-semibold text-gray-800">{event.title}</h3>
@@ -21,8 +21,11 @@ const EventCard = ({ event }) => (
 
 // --- Main Application Component ---
 const App = () => {
-  // The API endpoint. This will automatically route to the Node.js container in ACA.
-  const API_URL = process.env.REACT_APP_API_URL || '/api/events';
+  // CRITICAL FIX: Ensure the variable is read. We'll rely on the SWA setting 
+  // in the live environment or the proxy path during local development.
+  const API_URL = process.env.NODE_ENV === 'production' 
+    ? (process.env.REACT_APP_API_URL || '/api/events') // Use the injected absolute URL in production
+    : '/api/events'; // Use relative proxy path in development (localhost:3000)
 
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -38,8 +41,8 @@ const App = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(API_URL);
-
+      const response = await fetch(API_URL + '/api/events'); // Append /api/events here
+      
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -75,7 +78,7 @@ const App = () => {
     setError(null);
 
     try {
-      const response = await fetch(API_URL, {
+      const response = await fetch(API_URL + '/api/events', { // Append /api/events here
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newEvent),
