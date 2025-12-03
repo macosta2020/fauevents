@@ -1,29 +1,42 @@
-require('dotenv').config();
+require('dotenv').config(); // Load environment variables from .env file
 
 const express = require('express');
 const sql = require('mssql');
 const path = require('path');
+const cors = require('cors');
 
 const app = express();
-const port = process.env.PORT || 8080; // ACA will use this port
+const port = process.env.PORT || 8080;
 
+// --- CRITICAL CORS CONFIGURATION ---
+// Explicitly allow requests from the React Dev Server (port 3000)
+const corsOptions = {
+    origin: 'http://localhost:3000',
+    optionsSuccessStatus: 200 
+};
+app.use(cors(corsOptions)); // Apply the specific CORS options
+
+// Middleware to parse JSON
 app.use(express.json());
 
-// --- Database Configuration (Reads from environment variables set in ACA) ---
+// --- Database Configuration ---
 const sqlConfig = {
     user: process.env.SQL_USER,
     password: process.env.SQL_PASSWORD,
-    server: process.env.SQL_SERVER, // e.g., 'myserver.database.windows.net'
-    database: process.env.SQL_DATABASE, // e.g., 'MyScheduleDB'
+    server: process.env.SQL_SERVER,
+    database: process.env.SQL_DATABASE,
     options: {
-        encrypt: true, // Use HTTPS connection for security
-        trustServerCertificate: false // Recommended for production environments
-    }
+        encrypt: true, 
+        trustServerCertificate: false
+    },
+    // INCREASE TIMEOUTS for stability
+    requestTimeout: 60000, 
+    connectTimeout: 30000 
 };
 
-let pool; // Global connection pool
+let pool; 
 
-// --- Initialization: Connect to SQL and ensure table exists ---
+// --- Initialization: Connect to SQL and ensure tables exist ---
 const initializeDatabase = async () => {
     try {
         if (!pool) {
@@ -31,8 +44,22 @@ const initializeDatabase = async () => {
             console.log("SQL Database connection successful.");
         }
 
-        // Create Events table if it doesn't exist
-        const createTableQuery = `
+        // 1. Create Users table
+        const createUsersTableQuery = `
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Users' and xtype='U')
+            CREATE TABLE Users (
+                userId INT IDENTITY(1,1) PRIMARY KEY,
+                username NVARCHAR(100) NOT NULL UNIQUE,
+                passwordHash NVARCHAR(256) NOT NULL,
+                email NVARCHAR(100) UNIQUE,
+                createdAt DATETIME DEFAULT GETDATE()
+            )
+        `;
+        await pool.request().query(createUsersTableQuery);
+        console.log("Users table checked/created.");
+
+        // 2. Create Events table (The current schema is correct)
+        const createEventsTableQuery = `
             IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Events' and xtype='U')
             CREATE TABLE Events (
                 id INT IDENTITY(1,1) PRIMARY KEY,
@@ -40,15 +67,16 @@ const initializeDatabase = async () => {
                 description NVARCHAR(MAX),
                 date DATE NOT NULL,
                 time TIME,
-                userId NVARCHAR(50)
+                userId NVARCHAR(50), 
+                createdAt DATETIME DEFAULT GETDATE()
             )
         `;
-        await pool.request().query(createTableQuery);
+        await pool.request().query(createEventsTableQuery);
         console.log("Events table checked/created.");
 
     } catch (err) {
         console.error("Database Initialization Error:", err.message);
-        // Exit process or handle gracefully if connection is critical
+        process.exit(1); 
     }
 };
 
@@ -59,6 +87,7 @@ initializeDatabase();
 
 // GET /api/events: Retrieve all events
 app.get('/api/events', async (req, res) => {
+    console.log("GET Request received for /api/events");
     try {
         const result = await pool.request().query('SELECT id, title, description, CONVERT(NVARCHAR, date, 23) as date, CONVERT(NVARCHAR, time, 8) as time, userId FROM Events ORDER BY date DESC');
         res.json(result.recordset);
@@ -70,35 +99,48 @@ app.get('/api/events', async (req, res) => {
 
 // POST /api/events: Create a new event
 app.post('/api/events', async (req, res) => {
-    const { title, description, date, time, userId } = req.body;
+    console.log("POST Request received for /api/events. Body:", req.body);
+    let { title, description, date, time, userId } = req.body;
 
     if (!title || !date) {
         return res.status(400).send({ message: 'Title and date are required.' });
     }
 
     try {
+        // --- CRITICAL FIX: Ensure time is NULL if not explicitly provided ---
+        // If the date picker provides a minimal date, the time should be NULL to avoid
+        // the "Invalid time" error.
+        let timeValue = time;
+        if (!timeValue || timeValue === '09:00' || timeValue.trim() === '') {
+            timeValue = null; 
+        } 
+        
+        // Handle description safely
+        const finalDescription = description && description.trim() !== '' ? description : null;
+        
         const result = await pool.request()
             .input('title', sql.NVarChar(100), title)
-            .input('description', sql.NVarChar(sql.MAX), description)
-            .input('date', sql.Date, date)
-            .input('time', sql.Time, time || '00:00:00')
+            .input('description', sql.NVarChar(sql.MAX), finalDescription) 
+            .input('date', sql.Date, date) 
+            .input('time', sql.Time, timeValue) // Now safely passes NULL
             .input('userId', sql.NVarChar(50), userId || 'anonymous')
             .query(`
                 INSERT INTO Events (title, description, date, time, userId)
-                OUTPUT inserted.*
+                OUTPUT inserted.id, inserted.title, inserted.description, CONVERT(NVARCHAR, inserted.date, 23) as date, CONVERT(NVARCHAR, inserted.time, 8) as time, inserted.userId
                 VALUES (@title, @description, @date, @time, @userId)
             `);
 
-        // OUTPUT inserted.* returns the newly created record, including the auto-generated ID
+        // Return the newly created record
         res.status(201).json(result.recordset[0]);
     } catch (err) {
-        console.error("POST /api/events error:", err.message);
-        res.status(500).send({ message: 'Failed to add event.', error: err.message });
+        // Logging the full database error to the console (Terminal 1)
+        console.error("POST /api/events failure: FULL ERROR:", err.message);
+        // Sending a 500 error to the client
+        res.status(500).send({ message: 'Database query failed.', error: err.message });
     }
 });
 
-// Serve the React frontend's static build files (optional: if using a monolithic deployment)
-// Since we are using ACA for the backend and SWA for the frontend, this block is for local development only.
+// Serve the React frontend's static build files (optional)
 app.use(express.static(path.join(__dirname, '..', 'client', 'build')));
 
 app.get('*', (req, res) => {
