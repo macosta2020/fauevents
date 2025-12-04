@@ -175,6 +175,9 @@ const App = () => {
   
   // Sorting State
   const [sortOrder, setSortOrder] = useState('asc');
+  
+  // Search State
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Form State
   const [title, setTitle] = useState('');
@@ -300,8 +303,13 @@ const App = () => {
     }
   };
 
-  // --- Sorting Logic ---
-  const sortedEvents = [...events].sort((a, b) => {
+  // --- Filtering and Sorting Logic ---
+  const filteredEvents = events.filter(event => {
+    if (!searchTerm.trim()) return true;
+    return event.title.toLowerCase().includes(searchTerm.toLowerCase());
+  });
+
+  const sortedEvents = [...filteredEvents].sort((a, b) => {
     const dateA = new Date(`${a.date}T${a.time || '00:00:00'}`);
     const dateB = new Date(`${b.date}T${b.time || '00:00:00'}`);
     return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
@@ -411,21 +419,36 @@ const App = () => {
 
           {/* Column 2 & 3: Event List with Sorting */}
           <section className="lg:col-span-2">
-            <div className="flex flex-row justify-between items-center mb-6 border-b pb-3">
-              <h2 className="text-xl font-bold text-gray-800">Upcoming Events ({events.length})</h2>
+            <div className="mb-6 border-b pb-3">
+              <div className="flex flex-row justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-800">
+                  Upcoming Events ({filteredEvents.length}{searchTerm && ` of ${events.length}`})
+                </h2>
+                
+                {/* SORTING DROPDOWN */}
+                <div className="flex items-center space-x-2">
+                  <label htmlFor="sort" className="text-sm text-gray-600 font-medium">Sort by:</label>
+                  <select
+                    id="sort"
+                    value={sortOrder}
+                    onChange={(e) => setSortOrder(e.target.value)}
+                    className="p-2 text-sm border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                  >
+                    <option value="asc">Oldest First (Date ↑)</option>
+                    <option value="desc">Newest First (Date ↓)</option>
+                  </select>
+                </div>
+              </div>
               
-              {/* SORTING DROPDOWN */}
-              <div className="flex items-center space-x-2">
-                <label htmlFor="sort" className="text-sm text-gray-600 font-medium">Sort by:</label>
-                <select
-                  id="sort"
-                  value={sortOrder}
-                  onChange={(e) => setSortOrder(e.target.value)}
-                  className="p-2 text-sm border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 bg-white"
-                >
-                  <option value="asc">Oldest First (Date ↑)</option>
-                  <option value="desc">Newest First (Date ↓)</option>
-                </select>
+              {/* SEARCH BAR */}
+              <div className="w-full">
+                <input
+                  type="text"
+                  placeholder="Search events by name..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                />
               </div>
             </div>
 
