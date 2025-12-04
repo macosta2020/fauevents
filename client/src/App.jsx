@@ -80,8 +80,21 @@ const App = () => {
       return;
     }
 
+    // FIX: Ensure time has seconds (HH:MM:SS) to satisfy SQL Server strict validation
+    let formattedTime = time;
+    if (time && time.length === 5) {
+       formattedTime = `${time}:00`;
+    }
+
     // Hardcoded user ID since login is disabled
-    const newEvent = { title, description, date, time, userId: "anonymous_user" };
+    const newEvent = { 
+      title, 
+      description, 
+      date, 
+      time: formattedTime, // Send the SQL-safe time string
+      userId: "anonymous_user" 
+    };
+    
     setLoading(true);
     setError(null);
 
