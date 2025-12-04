@@ -199,6 +199,7 @@ const App = () => {
     }
   };
 
+  // Load Tailwind CSS on mount (regardless of auth state)
   useEffect(() => {
     const scriptId = 'tailwind-cdn';
     if (!document.getElementById(scriptId)) {
@@ -207,7 +208,10 @@ const App = () => {
       script.src = "https://cdn.tailwindcss.com";
       document.head.appendChild(script);
     }
+  }, []); // Empty dependency array - runs once on mount
 
+  // Fetch events when user is logged in
+  useEffect(() => {
     if (currentUser) {
       fetchEvents();
     }
