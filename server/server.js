@@ -77,7 +77,6 @@ app.post('/api/events', async (req, res) => {
     try {
         let timeValue = time;
         
-        // Allow any valid time string provided by the client.
         // Only default to NULL if the input is strictly missing or empty.
         if (!timeValue || timeValue.trim() === '') {
             timeValue = null; 
@@ -89,8 +88,8 @@ app.post('/api/events', async (req, res) => {
             .input('title', sql.NVarChar(100), title)
             .input('description', sql.NVarChar(sql.MAX), finalDescription) 
             .input('date', sql.Date, date) 
-            // FIX: Use NVarChar instead of Time to bypass strict driver validation.
-            // SQL Server will implicitly convert the string '09:00' to TIME correctly.
+            // FIX: Use NVarChar instead of Time. 
+            // This bypasses the driver's strict validation and lets SQL Server handle the AM/PM conversion.
             .input('time', sql.NVarChar(50), timeValue)
             .input('userId', sql.NVarChar(50), userId || 'anonymous')
             .query(`
