@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 // --- Event Card Component ---
-const EventCard = ({ event, onDelete }) => (
+const EventCard = ({ event, onDelete, currentUser }) => (
   <div className="p-4 bg-white rounded-xl shadow-md transition duration-300 hover:shadow-lg border border-gray-100 flex flex-col justify-between">
     <div>
       <h3 className="text-lg font-semibold text-gray-800">{event.title}</h3>
@@ -20,13 +20,15 @@ const EventCard = ({ event, onDelete }) => (
           User: {event.userId}
         </span>
       </div>
-      <button
-        onClick={() => onDelete(event.id)}
-        className="text-red-500 hover:text-red-700 text-sm font-semibold px-3 py-1 rounded hover:bg-red-50 transition duration-200"
-        title="Delete Event"
-      >
-        Delete
-      </button>
+      {currentUser && currentUser.username === "FAUadmin" && (
+        <button
+          onClick={() => onDelete(event.id)}
+          className="text-red-500 hover:text-red-700 text-sm font-semibold px-3 py-1 rounded hover:bg-red-50 transition duration-200"
+          title="Delete Event"
+        >
+          Delete
+        </button>
+      )}
     </div>
   </div>
 );
@@ -428,7 +430,7 @@ const App = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {sortedEvents.length > 0 ? (
                 sortedEvents.map(event => (
-                  <EventCard key={event.id} event={event} onDelete={handleDelete} />
+                  <EventCard key={event.id} event={event} onDelete={handleDelete} currentUser={currentUser} />
                 ))
               ) : (
                 <div className="md:col-span-2 p-6 text-center bg-white rounded-lg shadow-inner text-gray-500">
