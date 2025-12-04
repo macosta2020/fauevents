@@ -82,7 +82,7 @@ app.post('/api/register', async (req, res) => {
         // Check if user already exists
         const checkUser = await pool.request()
             .input('username', sql.NVarChar(50), username)
-            .query('SELECT id FROM Users WHERE username = @username');
+            .query('SELECT userId FROM Users WHERE username = @username');
 
         if (checkUser.recordset.length > 0) {
             return res.status(400).send({ message: 'Username already exists.' });
@@ -99,7 +99,7 @@ app.post('/api/register', async (req, res) => {
             .input('password', sql.NVarChar(255), hashedPassword)
             .query(`
                 INSERT INTO Users (username, email, password)
-                OUTPUT inserted.id, inserted.username, inserted.email
+                OUTPUT inserted.userId, inserted.username, inserted.email
                 VALUES (@username, @email, @password)
             `);
 
