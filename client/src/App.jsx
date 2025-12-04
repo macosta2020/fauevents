@@ -143,6 +143,16 @@ const AuthScreen = ({ onLogin }) => {
             {isLogin ? 'Register' : 'Login'}
           </button>
         </div>
+
+        {/* Bypass Button */}
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <button
+            onClick={() => onLogin({ username: 'bypass', id: 0, email: 'bypass@example.com' })}
+            className="w-full py-2 px-4 bg-gray-500 text-white font-semibold rounded-lg shadow-md hover:bg-gray-600 transition duration-150 text-sm"
+          >
+            Bypass Login (Skip Authentication)
+          </button>
+        </div>
       </div>
     </div>
   );
