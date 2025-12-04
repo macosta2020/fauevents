@@ -20,6 +20,7 @@ const EventCard = ({ event }) => (
 );
 
 // --- Auth Component (Login/Register) ---
+// Kept in code but currently bypassed
 const AuthScreen = ({ onLogin }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
@@ -28,8 +29,6 @@ const AuthScreen = ({ onLogin }) => {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  // FIX: Removed unsafe process.env check. 
-  // Using relative paths works best with Azure Static Web Apps proxies.
   const API_BASE = ''; 
 
   const handleSubmit = async (e) => {
@@ -54,14 +53,13 @@ const AuthScreen = ({ onLogin }) => {
       }
 
       if (isLogin) {
-        onLogin(data.user); // Pass the user object back to App
+        onLogin(data.user);
       } else {
         alert('Registration successful! Please login.');
         setIsLogin(true);
       }
     } catch (err) {
-      // Ensure error is always a string to prevent object rendering crash
-      setError(err.message || "An unexpected error occurred");
+      setError(err.message || String(err) || "An unexpected error occurred");
     } finally {
       setLoading(false);
     }
@@ -74,10 +72,9 @@ const AuthScreen = ({ onLogin }) => {
           {isLogin ? 'Login to Cloud Schedule' : 'Create Account'}
         </h2>
         
-        {/* Ensure error is rendered as a string */}
         {error && (
           <div className="mb-4 p-3 bg-red-100 text-red-700 text-sm rounded-lg">
-            {typeof error === 'string' ? error : 'An error occurred'}
+            {error}
           </div>
         )}
 
@@ -142,11 +139,13 @@ const AuthScreen = ({ onLogin }) => {
 
 // --- Main Application Component ---
 const App = () => {
-  // CRITICAL FIX: Always use the relative path. SWA handles the absolute routing.
   const API_URL = '/api/events'; 
 
-  // Auth State
-  const [currentUser, setCurrentUser] = useState(null);
+  // FIX: Initialize with a mock user to bypass the login screen for development
+  const [currentUser, setCurrentUser] = useState({ username: 'dev_test_user' });
+  
+  // Original line (uncomment to re-enable login):
+  // const [currentUser, setCurrentUser] = useState(null);
 
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -157,7 +156,6 @@ const App = () => {
   const [date, setDate] = useState('');
   const [time, setTime] = useState('09:00');
 
-  // --- Fetch Data (GET) ---
   const fetchEvents = async () => {
     setLoading(true);
     setError(null);
@@ -172,7 +170,6 @@ const App = () => {
       setEvents(data);
     } catch (err) {
       setError(`Failed to fetch events: ${err.message}`);
-      // Only use mock data if absolutely necessary for dev
       setEvents([]);
     } finally {
       setLoading(false);
@@ -180,7 +177,6 @@ const App = () => {
   };
 
   useEffect(() => {
-    // Dynamically inject Tailwind if missing
     const scriptId = 'tailwind-cdn';
     if (!document.getElementById(scriptId)) {
       const script = document.createElement('script');
@@ -192,9 +188,8 @@ const App = () => {
     if (currentUser) {
       fetchEvents();
     }
-  }, [currentUser]); // Re-fetch when user logs in
+  }, [currentUser]);
 
-  // --- Submit Data (POST) ---
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -227,7 +222,6 @@ const App = () => {
 
       await fetchEvents();
 
-      // Clear form
       setTitle('');
       setDescription('');
       setDate('');
@@ -240,7 +234,6 @@ const App = () => {
     }
   };
 
-  // --- Render Logic ---
   if (!currentUser) {
     return <AuthScreen onLogin={(user) => setCurrentUser(user)} />;
   }
@@ -291,7 +284,6 @@ const App = () => {
                   id="title"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g., Database Systems Exam"
                   className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
                   required
                 />
