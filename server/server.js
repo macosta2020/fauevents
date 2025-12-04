@@ -3,6 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const sql = require('mssql');
 const path = require('path');
+const bcrypt = require('bcrypt');
 
 const app = express();
 const port = process.env.PORT || 8080;
@@ -31,7 +32,21 @@ const initializeDatabase = async () => {
             console.log("SQL Database connection successful.");
         }
 
-        // Only ensure Events table exists (No Users table)
+        // Create Users table
+        const createUsersTableQuery = `
+            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Users' and xtype='U')
+            CREATE TABLE Users (
+                id INT IDENTITY(1,1) PRIMARY KEY,
+                username NVARCHAR(50) NOT NULL UNIQUE,
+                email NVARCHAR(100) NOT NULL,
+                password NVARCHAR(255) NOT NULL,
+                createdAt DATETIME DEFAULT GETDATE()
+            )
+        `;
+        await pool.request().query(createUsersTableQuery);
+        console.log("Users table checked/created.");
+
+        // Create Events table
         const createEventsTableQuery = `
             IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Events' and xtype='U')
             CREATE TABLE Events (
@@ -54,6 +69,91 @@ const initializeDatabase = async () => {
 };
 
 initializeDatabase();
+
+// POST /api/register
+app.post('/api/register', async (req, res) => {
+    const { username, password, email } = req.body;
+
+    if (!username || !password || !email) {
+        return res.status(400).send({ message: 'Username, password, and email are required.' });
+    }
+
+    try {
+        // Check if user already exists
+        const checkUser = await pool.request()
+            .input('username', sql.NVarChar(50), username)
+            .query('SELECT id FROM Users WHERE username = @username');
+
+        if (checkUser.recordset.length > 0) {
+            return res.status(400).send({ message: 'Username already exists.' });
+        }
+
+        // Hash password
+        const saltRounds = 10;
+        const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+        // Insert new user
+        const result = await pool.request()
+            .input('username', sql.NVarChar(50), username)
+            .input('email', sql.NVarChar(100), email)
+            .input('password', sql.NVarChar(255), hashedPassword)
+            .query(`
+                INSERT INTO Users (username, email, password)
+                OUTPUT inserted.id, inserted.username, inserted.email
+                VALUES (@username, @email, @password)
+            `);
+
+        res.status(201).json({ 
+            message: 'User registered successfully.',
+            user: result.recordset[0]
+        });
+    } catch (err) {
+        console.error("POST /api/register error:", err.message);
+        res.status(500).send({ message: 'Registration failed.', error: err.message });
+    }
+});
+
+// POST /api/login
+app.post('/api/login', async (req, res) => {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+        return res.status(400).send({ message: 'Username and password are required.' });
+    }
+
+    try {
+        // Find user by username
+        const result = await pool.request()
+            .input('username', sql.NVarChar(50), username)
+            .query('SELECT id, username, email, password FROM Users WHERE username = @username');
+
+        if (result.recordset.length === 0) {
+            return res.status(401).send({ message: 'Invalid username or password.' });
+        }
+
+        const user = result.recordset[0];
+
+        // Verify password
+        const passwordMatch = await bcrypt.compare(password, user.password);
+
+        if (!passwordMatch) {
+            return res.status(401).send({ message: 'Invalid username or password.' });
+        }
+
+        // Return user data (without password)
+        res.json({
+            message: 'Login successful.',
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email
+            }
+        });
+    } catch (err) {
+        console.error("POST /api/login error:", err.message);
+        res.status(500).send({ message: 'Login failed.', error: err.message });
+    }
+});
 
 // GET /api/events
 app.get('/api/events', async (req, res) => {
