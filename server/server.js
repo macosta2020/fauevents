@@ -32,19 +32,54 @@ const initializeDatabase = async () => {
             console.log("SQL Database connection successful.");
         }
 
-        // Create Users table
-        const createUsersTableQuery = `
-            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Users' and xtype='U')
-            CREATE TABLE Users (
-                id INT IDENTITY(1,1) PRIMARY KEY,
-                username NVARCHAR(50) NOT NULL UNIQUE,
-                email NVARCHAR(100) NOT NULL,
-                password NVARCHAR(255) NOT NULL,
-                createdAt DATETIME DEFAULT GETDATE()
-            )
-        `;
-        await pool.request().query(createUsersTableQuery);
-        console.log("Users table checked/created.");
+        // Check if Users table exists and has correct structure
+        const tableExists = await pool.request()
+            .query(`SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Users'`);
+        
+        if (tableExists.recordset.length > 0) {
+            // Table exists, check if it has the correct columns
+            const columns = await pool.request()
+                .query(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Users'`);
+            
+            const columnNames = columns.recordset.map(col => col.COLUMN_NAME.toLowerCase());
+            const requiredColumns = ['id', 'username', 'email', 'password', 'createdat'];
+            const hasAllColumns = requiredColumns.every(col => columnNames.includes(col));
+            
+            if (!hasAllColumns) {
+                // Drop and recreate table if structure is wrong
+                console.log("Users table exists but has wrong structure. Dropping and recreating...");
+                await pool.request().query(`
+                    IF EXISTS (SELECT * FROM sysobjects WHERE name='Users' and xtype='U')
+                    DROP TABLE Users
+                `);
+                const createUsersTableQuery = `
+                    CREATE TABLE Users (
+                        id INT IDENTITY(1,1) PRIMARY KEY,
+                        username NVARCHAR(50) NOT NULL UNIQUE,
+                        email NVARCHAR(100) NOT NULL,
+                        password NVARCHAR(255) NOT NULL,
+                        createdAt DATETIME DEFAULT GETDATE()
+                    )
+                `;
+                await pool.request().query(createUsersTableQuery);
+                console.log("Users table recreated with correct structure.");
+            } else {
+                console.log("Users table exists with correct structure.");
+            }
+        } else {
+            // Table doesn't exist, create it
+            const createUsersTableQuery = `
+                CREATE TABLE Users (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    username NVARCHAR(50) NOT NULL UNIQUE,
+                    email NVARCHAR(100) NOT NULL,
+                    password NVARCHAR(255) NOT NULL,
+                    createdAt DATETIME DEFAULT GETDATE()
+                )
+            `;
+            await pool.request().query(createUsersTableQuery);
+            console.log("Users table created.");
+        }
 
         // Create Events table
         const createEventsTableQuery = `
