@@ -1,39 +1,61 @@
 import React, { useState, useEffect } from 'react';
 
 // --- Event Card Component ---
-const EventCard = ({ event, onDelete, currentUser }) => (
-  <div className="p-4 bg-white rounded-xl shadow-md transition duration-300 hover:shadow-lg border border-gray-100 flex flex-col justify-between">
-    <div>
-      <h3 className="text-lg font-semibold text-gray-800">{event.title}</h3>
-      <p className="text-sm text-indigo-600 font-medium mt-1">
-        {new Date(event.date).toLocaleDateString()} {event.time ? `@ ${event.time}` : ''}
-      </p>
-      <p className="text-gray-500 text-sm mt-2">{event.description}</p>
-    </div>
-    
-    <div className="mt-4 flex justify-between items-center border-t border-gray-100 pt-3">
-      <div className="flex space-x-2 text-xs">
-        {currentUser && currentUser.username === "FAUadmin" && (
-          <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full">
-            ID: {event.id}
-          </span>
+const EventCard = ({ event, onDelete, onApprove, currentUser, isPending }) => {
+  const isAdmin = currentUser && currentUser.username === "FAUadmin";
+  
+  return (
+    <div className={`p-4 bg-white rounded-xl shadow-md transition duration-300 hover:shadow-lg border flex flex-col justify-between ${
+      isPending ? 'border-yellow-300 bg-yellow-50' : 'border-gray-100'
+    }`}>
+      <div>
+        {isPending && (
+          <div className="mb-2 px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-semibold rounded-full inline-block">
+            Pending Approval
+          </div>
         )}
-        <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
-          User: {event.userId}
-        </span>
+        <h3 className="text-lg font-semibold text-gray-800">{event.title}</h3>
+        <p className="text-sm text-indigo-600 font-medium mt-1">
+          {new Date(event.date).toLocaleDateString()} {event.time ? `@ ${event.time}` : ''}
+        </p>
+        <p className="text-gray-500 text-sm mt-2">{event.description}</p>
       </div>
-      {currentUser && currentUser.username === "FAUadmin" && (
-        <button
-          onClick={() => onDelete(event.id)}
-          className="text-red-500 hover:text-red-700 text-sm font-semibold px-3 py-1 rounded hover:bg-red-50 transition duration-200"
-          title="Delete Event"
-        >
-          Delete
-        </button>
-      )}
+      
+      <div className="mt-4 flex justify-between items-center border-t border-gray-100 pt-3">
+        <div className="flex space-x-2 text-xs">
+          {isAdmin && (
+            <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full">
+              ID: {event.id}
+            </span>
+          )}
+          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
+            User: {event.userId}
+          </span>
+        </div>
+        <div className="flex space-x-2">
+          {isPending && isAdmin && onApprove && (
+            <button
+              onClick={() => onApprove(event.id)}
+              className="text-green-600 hover:text-green-800 text-sm font-semibold px-3 py-1 rounded hover:bg-green-50 transition duration-200 border border-green-200"
+              title="Approve Event"
+            >
+              Approve
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              onClick={() => onDelete(event.id)}
+              className="text-red-500 hover:text-red-700 text-sm font-semibold px-3 py-1 rounded hover:bg-red-50 transition duration-200"
+              title="Delete Event"
+            >
+              Delete
+            </button>
+          )}
+        </div>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 // --- Auth Component (Login/Register) ---
 const AuthScreen = ({ onLogin }) => {
@@ -190,7 +212,11 @@ const App = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(API_URL);
+      // Include pending events if user is admin
+      const isAdmin = currentUser && currentUser.username === 'FAUadmin';
+      const url = isAdmin ? `${API_URL}?includePending=true` : API_URL;
+      
+      const response = await fetch(url);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -269,8 +295,43 @@ const App = () => {
       setDate('');
       setTime('09:00');
 
+      // Show success message
+      if (currentUser && currentUser.username !== 'FAUadmin') {
+        alert('Event submitted successfully! It is pending approval and will be visible to others once approved by an administrator.');
+      }
+
     } catch (err) {
       setError(`Error submitting event: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- Approve Event ---
+  const handleApprove = async (id) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_URL}/${id}/approve`, {
+        method: 'PUT',
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || data.message || `Failed to approve event (Status: ${response.status})`);
+      }
+
+      // Update the event's approved status in the local state
+      setEvents(prevEvents => 
+        prevEvents.map(event => 
+          event.id === id ? { ...event, approved: true } : event
+        )
+      );
+
+    } catch (err) {
+      setError(`Error approving event: ${err.message}`);
+      await fetchEvents();
     } finally {
       setLoading(false);
     }
@@ -305,14 +366,19 @@ const App = () => {
 
   // --- Filtering and Sorting Logic ---
   const now = new Date();
+  const isAdmin = currentUser && currentUser.username === 'FAUadmin';
   
-  // Separate events into upcoming and past
-  const upcomingEvents = events.filter(event => {
+  // Separate events into approved and pending (for admin view)
+  const approvedEvents = events.filter(event => event.approved === true || event.approved === 1);
+  const pendingEvents = isAdmin ? events.filter(event => !event.approved || event.approved === false || event.approved === 0) : [];
+  
+  // Separate approved events into upcoming and past
+  const upcomingEvents = approvedEvents.filter(event => {
     const eventDate = new Date(`${event.date}T${event.time || '23:59:59'}`);
     return eventDate >= now;
   });
   
-  const pastEvents = events.filter(event => {
+  const pastEvents = approvedEvents.filter(event => {
     const eventDate = new Date(`${event.date}T${event.time || '00:00:00'}`);
     return eventDate < now;
   });
@@ -325,6 +391,7 @@ const App = () => {
     );
   };
 
+  const filteredPending = filterBySearch(pendingEvents);
   const filteredUpcoming = filterBySearch(upcomingEvents);
   const filteredPast = filterBySearch(pastEvents);
 
@@ -337,6 +404,7 @@ const App = () => {
     });
   };
 
+  const sortedPending = sortEvents(filteredPending);
   const sortedUpcoming = sortEvents(filteredUpcoming);
   const sortedPast = sortEvents(filteredPast);
 
@@ -477,6 +545,27 @@ const App = () => {
               </div>
             </div>
 
+            {/* Pending Events Section (Admin Only) */}
+            {isAdmin && filteredPending.length > 0 && (
+              <div className="mb-8">
+                <h3 className="text-lg font-semibold text-yellow-700 mb-4">
+                  Pending Approval ({filteredPending.length}{searchTerm && ` of ${pendingEvents.length}`})
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {sortedPending.map(event => (
+                    <EventCard 
+                      key={event.id} 
+                      event={event} 
+                      onDelete={handleDelete}
+                      onApprove={handleApprove}
+                      currentUser={currentUser}
+                      isPending={true}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Upcoming Events Section */}
             <div className="mb-8">
               <h3 className="text-lg font-semibold text-gray-700 mb-4">
@@ -485,7 +574,14 @@ const App = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {sortedUpcoming.length > 0 ? (
                   sortedUpcoming.map(event => (
-                    <EventCard key={event.id} event={event} onDelete={handleDelete} currentUser={currentUser} />
+                    <EventCard 
+                      key={event.id} 
+                      event={event} 
+                      onDelete={handleDelete}
+                      onApprove={handleApprove}
+                      currentUser={currentUser}
+                      isPending={false}
+                    />
                   ))
                 ) : (
                   <div className="md:col-span-2 p-6 text-center bg-white rounded-lg shadow-inner text-gray-500">
@@ -503,7 +599,14 @@ const App = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {sortedPast.length > 0 ? (
                   sortedPast.map(event => (
-                    <EventCard key={event.id} event={event} onDelete={handleDelete} currentUser={currentUser} />
+                    <EventCard 
+                      key={event.id} 
+                      event={event} 
+                      onDelete={handleDelete}
+                      onApprove={handleApprove}
+                      currentUser={currentUser}
+                      isPending={false}
+                    />
                   ))
                 ) : (
                   <div className="md:col-span-2 p-6 text-center bg-white rounded-lg shadow-inner text-gray-500">

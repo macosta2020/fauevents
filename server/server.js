@@ -81,21 +81,46 @@ const initializeDatabase = async () => {
             console.log("Users table created.");
         }
 
-        // Create Events table
-        const createEventsTableQuery = `
-            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Events' and xtype='U')
-            CREATE TABLE Events (
-                id INT IDENTITY(1,1) PRIMARY KEY,
-                title NVARCHAR(100) NOT NULL,
-                description NVARCHAR(MAX),
-                date DATE NOT NULL,
-                time TIME,
-                userId NVARCHAR(50), 
-                createdAt DATETIME DEFAULT GETDATE()
-            )
-        `;
-        await pool.request().query(createEventsTableQuery);
-        console.log("Events table checked/created.");
+        // Check if Events table exists and has approved column
+        const eventsTableExists = await pool.request()
+            .query(`SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Events'`);
+        
+        if (eventsTableExists.recordset.length > 0) {
+            // Table exists, check if it has the approved column
+            const columns = await pool.request()
+                .query(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Events'`);
+            
+            const columnNames = columns.recordset.map(col => col.COLUMN_NAME.toLowerCase());
+            
+            if (!columnNames.includes('approved')) {
+                // Add approved column if it doesn't exist
+                console.log("Adding 'approved' column to Events table...");
+                await pool.request().query(`
+                    ALTER TABLE Events ADD approved BIT DEFAULT 0
+                `);
+                // Set existing events to approved (backward compatibility)
+                await pool.request().query(`
+                    UPDATE Events SET approved = 1 WHERE approved IS NULL
+                `);
+                console.log("'approved' column added to Events table.");
+            }
+        } else {
+            // Table doesn't exist, create it with approved column
+            const createEventsTableQuery = `
+                CREATE TABLE Events (
+                    id INT IDENTITY(1,1) PRIMARY KEY,
+                    title NVARCHAR(100) NOT NULL,
+                    description NVARCHAR(MAX),
+                    date DATE NOT NULL,
+                    time TIME,
+                    userId NVARCHAR(50), 
+                    approved BIT DEFAULT 0,
+                    createdAt DATETIME DEFAULT GETDATE()
+                )
+            `;
+            await pool.request().query(createEventsTableQuery);
+            console.log("Events table created with approval column.");
+        }
 
     } catch (err) {
         console.error("Database Initialization Error:", err.message);
@@ -193,7 +218,19 @@ app.post('/api/login', async (req, res) => {
 // GET /api/events
 app.get('/api/events', async (req, res) => {
     try {
-        const result = await pool.request().query('SELECT id, title, description, CONVERT(NVARCHAR, date, 23) as date, CONVERT(NVARCHAR, time, 8) as time, userId FROM Events ORDER BY date DESC');
+        const { includePending } = req.query;
+        const isAdmin = includePending === 'true';
+        
+        let query;
+        if (isAdmin) {
+            // Admin can see all events (approved and pending)
+            query = 'SELECT id, title, description, CONVERT(NVARCHAR, date, 23) as date, CONVERT(NVARCHAR, time, 8) as time, userId, approved FROM Events ORDER BY date DESC';
+        } else {
+            // Regular users only see approved events
+            query = 'SELECT id, title, description, CONVERT(NVARCHAR, date, 23) as date, CONVERT(NVARCHAR, time, 8) as time, userId, approved FROM Events WHERE approved = 1 ORDER BY date DESC';
+        }
+        
+        const result = await pool.request().query(query);
         res.json(result.recordset);
     } catch (err) {
         console.error("GET /api/events error:", err.message);
@@ -219,6 +256,9 @@ app.post('/api/events', async (req, res) => {
         
         const finalDescription = description && description.trim() !== '' ? description : null;
         
+        // Auto-approve if user is FAUadmin, otherwise require approval
+        const isApproved = userId === 'FAUadmin' ? 1 : 0;
+        
         const result = await pool.request()
             .input('title', sql.NVarChar(100), title)
             .input('description', sql.NVarChar(sql.MAX), finalDescription) 
@@ -227,16 +267,37 @@ app.post('/api/events', async (req, res) => {
             // This bypasses the driver's strict validation and lets SQL Server handle the AM/PM conversion.
             .input('time', sql.NVarChar(50), timeValue)
             .input('userId', sql.NVarChar(50), userId || 'anonymous')
+            .input('approved', sql.Bit, isApproved)
             .query(`
-                INSERT INTO Events (title, description, date, time, userId)
-                OUTPUT inserted.id, inserted.title, inserted.description, CONVERT(NVARCHAR, inserted.date, 23) as date, CONVERT(NVARCHAR, inserted.time, 8) as time, inserted.userId
-                VALUES (@title, @description, @date, @time, @userId)
+                INSERT INTO Events (title, description, date, time, userId, approved)
+                OUTPUT inserted.id, inserted.title, inserted.description, CONVERT(NVARCHAR, inserted.date, 23) as date, CONVERT(NVARCHAR, inserted.time, 8) as time, inserted.userId, inserted.approved
+                VALUES (@title, @description, @date, @time, @userId, @approved)
             `);
 
         res.status(201).json(result.recordset[0]);
     } catch (err) {
         console.error("POST /api/events failure: FULL ERROR:", err.message);
         res.status(500).send({ message: 'Database query failed.', error: err.message });
+    }
+});
+
+// PUT /api/events/:id/approve
+app.put('/api/events/:id/approve', async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const result = await pool.request()
+            .input('id', sql.Int, id)
+            .query('UPDATE Events SET approved = 1 WHERE id = @id');
+
+        if (result.rowsAffected[0] === 0) {
+            return res.status(404).send({ message: 'Event not found' });
+        }
+
+        res.status(200).send({ message: 'Event approved successfully' });
+    } catch (err) {
+        console.error("PUT /api/events/:id/approve error:", err.message);
+        res.status(500).send({ message: 'Failed to approve event.', error: err.message });
     }
 });
 
