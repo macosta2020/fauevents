@@ -106,7 +106,7 @@ const AuthScreen = ({ onLogin }) => {
     <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4">
       <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-gray-200">
         <h2 className="text-2xl font-bold text-indigo-900 mb-6 text-center">
-          {isLogin ? 'Login to Cloud Schedule' : 'Create Account'}
+          {isLogin ? 'Login to FAU Events' : 'Create Account'}
         </h2>
         
         {error && (
