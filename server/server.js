@@ -114,6 +114,26 @@ app.get('*', (req, res) => {
     }
 });
 
+// DELETE /api/events/:id
+app.delete('/api/events/:id', async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const result = await pool.request()
+            .input('id', sql.Int, id)
+            .query('DELETE FROM Events WHERE id = @id');
+
+        if (result.rowsAffected[0] === 0) {
+            return res.status(404).send({ message: 'Event not found' });
+        }
+
+        res.status(200).send({ message: 'Event deleted successfully' });
+    } catch (err) {
+        console.error("DELETE /api/events failure:", err.message);
+        res.status(500).send({ message: 'Database deletion failed.', error: err.message });
+    }
+});
+
 app.listen(port, () => {
     console.log(`Node.js API listening on port ${port}`);
 });

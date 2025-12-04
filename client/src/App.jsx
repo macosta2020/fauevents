@@ -1,20 +1,32 @@
 import React, { useState, useEffect } from 'react';
 
 // --- Event Card Component ---
-const EventCard = ({ event }) => (
-  <div className="p-4 bg-white rounded-xl shadow-md transition duration-300 hover:shadow-lg border border-gray-100">
-    <h3 className="text-lg font-semibold text-gray-800">{event.title}</h3>
-    <p className="text-sm text-indigo-600 font-medium mt-1">
-      {new Date(event.date).toLocaleDateString()} {event.time ? `@ ${event.time}` : ''}
-    </p>
-    <p className="text-gray-500 text-sm mt-2">{event.description}</p>
-    <div className="mt-3 flex space-x-2 text-xs">
-      <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full">
-        ID: {event.id}
-      </span>
-      <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
-        User: {event.userId}
-      </span>
+const EventCard = ({ event, onDelete }) => (
+  <div className="p-4 bg-white rounded-xl shadow-md transition duration-300 hover:shadow-lg border border-gray-100 flex flex-col justify-between">
+    <div>
+      <h3 className="text-lg font-semibold text-gray-800">{event.title}</h3>
+      <p className="text-sm text-indigo-600 font-medium mt-1">
+        {new Date(event.date).toLocaleDateString()} {event.time ? `@ ${event.time}` : ''}
+      </p>
+      <p className="text-gray-500 text-sm mt-2">{event.description}</p>
+    </div>
+    
+    <div className="mt-4 flex justify-between items-center border-t border-gray-100 pt-3">
+      <div className="flex space-x-2 text-xs">
+        <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full">
+          ID: {event.id}
+        </span>
+        <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
+          User: {event.userId}
+        </span>
+      </div>
+      <button
+        onClick={() => onDelete(event.id)}
+        className="text-red-500 hover:text-red-700 text-sm font-semibold px-3 py-1 rounded hover:bg-red-50 transition duration-200"
+        title="Delete Event"
+      >
+        Delete
+      </button>
     </div>
   </div>
 );
@@ -112,6 +124,38 @@ const App = () => {
 
     } catch (err) {
       setError(`Error submitting event: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- Delete Data (DELETE) ---
+  const handleDelete = async (id) => {
+    if (!window.confirm("Are you sure you want to delete this event?")) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_URL}/${id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({})); // Handle cases with no JSON response
+        throw new Error(data.error || data.message || `Failed to delete event (Status: ${response.status})`);
+      }
+
+      // Remove the deleted event from state immediately for better UI responsiveness
+      setEvents(prevEvents => prevEvents.filter(event => event.id !== id));
+      
+      // Optional: Re-fetch to ensure sync
+      // await fetchEvents(); 
+
+    } catch (err) {
+      setError(`Error deleting event: ${err.message}`);
+      // If optimistic update failed, re-fetch
+      await fetchEvents();
     } finally {
       setLoading(false);
     }
@@ -239,7 +283,7 @@ const App = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {sortedEvents.length > 0 ? (
                 sortedEvents.map(event => (
-                  <EventCard key={event.id} event={event} />
+                  <EventCard key={event.id} event={event} onDelete={handleDelete} />
                 ))
               ) : (
                 <div className="md:col-span-2 p-6 text-center bg-white rounded-lg shadow-inner text-gray-500">
