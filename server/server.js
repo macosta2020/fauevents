@@ -76,7 +76,10 @@ app.post('/api/events', async (req, res) => {
 
     try {
         let timeValue = time;
-        if (!timeValue || timeValue === '09:00' || timeValue.trim() === '') {
+        
+        // Allow any valid time string provided by the client.
+        // Only default to NULL if the input is strictly missing or empty.
+        if (!timeValue || timeValue.trim() === '') {
             timeValue = null; 
         } 
         
