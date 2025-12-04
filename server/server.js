@@ -1,192 +1,368 @@
-require('dotenv').config(); // Load environment variables from .env file
+import React, { useState, useEffect } from 'react';
 
-const express = require('express');
-const sql = require('mssql');
-const path = require('path');
-// const cors = require('cors'); // Removed as per previous fix for ACA
+// --- Event Card Component ---
+const EventCard = ({ event }) => (
+  <div className="p-4 bg-white rounded-xl shadow-md transition duration-300 hover:shadow-lg border border-gray-100">
+    <h3 className="text-lg font-semibold text-gray-800">{event.title}</h3>
+    <p className="text-sm text-indigo-600 font-medium mt-1">
+      {new Date(event.date).toLocaleDateString()} @ {event.time}
+    </p>
+    <p className="text-gray-500 text-sm mt-2">{event.description}</p>
+    <div className="mt-3 flex space-x-2 text-xs">
+      <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full">
+        ID: {event.id}
+      </span>
+      <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full">
+        User: {event.userId}
+      </span>
+    </div>
+  </div>
+);
 
-const app = express();
-const port = process.env.PORT || 8080;
+// --- Auth Component (Login/Register) ---
+const AuthScreen = ({ onLogin }) => {
+  const [isLogin, setIsLogin] = useState(true);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-app.use(express.json());
+  // FIX: Removed unsafe process.env check. 
+  // Using relative paths works best with Azure Static Web Apps proxies.
+  const API_BASE = ''; 
 
-// --- Database Configuration ---
-const sqlConfig = {
-    user: process.env.SQL_USER,
-    password: process.env.SQL_PASSWORD,
-    server: process.env.SQL_SERVER,
-    database: process.env.SQL_DATABASE,
-    options: {
-        encrypt: true, 
-        trustServerCertificate: false
-    },
-    requestTimeout: 60000, 
-    connectTimeout: 30000 
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    const endpoint = isLogin ? '/api/login' : '/api/register';
+    const payload = isLogin ? { username, password } : { username, password, email };
+
+    try {
+      const response = await fetch(API_BASE + endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Authentication failed');
+      }
+
+      if (isLogin) {
+        onLogin(data.user); // Pass the user object back to App
+      } else {
+        alert('Registration successful! Please login.');
+        setIsLogin(true);
+      }
+    } catch (err) {
+      // Ensure error is always a string to prevent object rendering crash
+      setError(err.message || "An unexpected error occurred");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4">
+      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-gray-200">
+        <h2 className="text-2xl font-bold text-indigo-900 mb-6 text-center">
+          {isLogin ? 'Login to Cloud Schedule' : 'Create Account'}
+        </h2>
+        
+        {/* Ensure error is rendered as a string */}
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 text-red-700 text-sm rounded-lg">
+            {typeof error === 'string' ? error : 'An error occurred'}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+              required
+            />
+          </div>
+          
+          {!isLogin && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                required
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-2 px-4 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 transition duration-150 disabled:bg-indigo-400"
+          >
+            {loading ? 'Processing...' : (isLogin ? 'Login' : 'Register')}
+          </button>
+        </form>
+
+        <div className="mt-6 text-center text-sm text-gray-600">
+          {isLogin ? "Don't have an account? " : "Already have an account? "}
+          <button
+            onClick={() => { setIsLogin(!isLogin); setError(null); }}
+            className="text-indigo-600 font-semibold hover:underline"
+          >
+            {isLogin ? 'Register' : 'Login'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 };
 
-let pool; 
+// --- Main Application Component ---
+const App = () => {
+  // CRITICAL FIX: Always use the relative path. SWA handles the absolute routing.
+  const API_URL = '/api/events'; 
 
-// --- Initialization ---
-const initializeDatabase = async () => {
+  // Auth State
+  const [currentUser, setCurrentUser] = useState(null);
+
+  const [events, setEvents] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [date, setDate] = useState('');
+  const [time, setTime] = useState('09:00');
+
+  // --- Fetch Data (GET) ---
+  const fetchEvents = async () => {
+    setLoading(true);
+    setError(null);
     try {
-        if (!pool) {
-            pool = await sql.connect(sqlConfig);
-            console.log("SQL Database connection successful.");
-        }
+      const response = await fetch(API_URL);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
-        // 1. Create Users table
-        const createUsersTableQuery = `
-            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Users' and xtype='U')
-            CREATE TABLE Users (
-                userId INT IDENTITY(1,1) PRIMARY KEY,
-                username NVARCHAR(100) NOT NULL UNIQUE,
-                passwordHash NVARCHAR(256) NOT NULL,
-                email NVARCHAR(100),
-                createdAt DATETIME DEFAULT GETDATE()
-            )
-        `;
-        await pool.request().query(createUsersTableQuery);
-        console.log("Users table checked/created.");
-
-        // 2. Create Events table
-        const createEventsTableQuery = `
-            IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='Events' and xtype='U')
-            CREATE TABLE Events (
-                id INT IDENTITY(1,1) PRIMARY KEY,
-                title NVARCHAR(100) NOT NULL,
-                description NVARCHAR(MAX),
-                date DATE NOT NULL,
-                time TIME,
-                userId NVARCHAR(50), 
-                createdAt DATETIME DEFAULT GETDATE()
-            )
-        `;
-        await pool.request().query(createEventsTableQuery);
-        console.log("Events table checked/created.");
-
+      const data = await response.json();
+      setEvents(data);
     } catch (err) {
-        console.error("Database Initialization Error:", err.message);
-        process.exit(1); 
+      setError(`Failed to fetch events: ${err.message}`);
+      // Only use mock data if absolutely necessary for dev
+      setEvents([]);
+    } finally {
+      setLoading(false);
     }
-};
+  };
 
-initializeDatabase();
-
-// --- API Endpoints ---
-
-// AUTH: REGISTER
-app.post('/api/register', async (req, res) => {
-    const { username, password, email } = req.body;
-
-    if (!username || !password) {
-        return res.status(400).send({ message: 'Username and password are required.' });
-    }
-
-    try {
-        // Check if user exists
-        const checkUser = await pool.request()
-            .input('username', sql.NVarChar(100), username)
-            .query('SELECT * FROM Users WHERE username = @username');
-
-        if (checkUser.recordset.length > 0) {
-            return res.status(409).send({ message: 'Username already taken.' });
-        }
-
-        // Insert new user (storing plain password for this demo - Use bcrypt in production!)
-        await pool.request()
-            .input('username', sql.NVarChar(100), username)
-            .input('password', sql.NVarChar(256), password) 
-            .input('email', sql.NVarChar(100), email || null)
-            .query('INSERT INTO Users (username, passwordHash, email) VALUES (@username, @password, @email)');
-
-        res.status(201).send({ message: 'User registered successfully' });
-    } catch (err) {
-        console.error("Registration Error:", err.message);
-        res.status(500).send({ message: 'Server error during registration.' });
-    }
-});
-
-// AUTH: LOGIN
-app.post('/api/login', async (req, res) => {
-    const { username, password } = req.body;
-
-    if (!username || !password) {
-        return res.status(400).send({ message: 'Username and password are required.' });
+  useEffect(() => {
+    // Dynamically inject Tailwind if missing
+    const scriptId = 'tailwind-cdn';
+    if (!document.getElementById(scriptId)) {
+      const script = document.createElement('script');
+      script.id = scriptId;
+      script.src = "https://cdn.tailwindcss.com";
+      document.head.appendChild(script);
     }
 
-    try {
-        const result = await pool.request()
-            .input('username', sql.NVarChar(100), username)
-            .input('password', sql.NVarChar(256), password)
-            .query('SELECT userId, username, email FROM Users WHERE username = @username AND passwordHash = @password');
-
-        if (result.recordset.length > 0) {
-            const user = result.recordset[0];
-            res.json({ message: 'Login successful', user });
-        } else {
-            res.status(401).send({ message: 'Invalid credentials' });
-        }
-    } catch (err) {
-        console.error("Login Error:", err.message);
-        res.status(500).send({ message: 'Server error during login.' });
+    if (currentUser) {
+      fetchEvents();
     }
-});
+  }, [currentUser]); // Re-fetch when user logs in
 
-// GET /api/events
-app.get('/api/events', async (req, res) => {
-    try {
-        const result = await pool.request().query('SELECT id, title, description, CONVERT(NVARCHAR, date, 23) as date, CONVERT(NVARCHAR, time, 8) as time, userId FROM Events ORDER BY date DESC');
-        res.json(result.recordset);
-    } catch (err) {
-        console.error("GET /api/events error:", err.message);
-        res.status(500).send({ message: 'Failed to retrieve events.', error: err.message });
-    }
-});
-
-// POST /api/events
-app.post('/api/events', async (req, res) => {
-    let { title, description, date, time, userId } = req.body;
+  // --- Submit Data (POST) ---
+  const handleSubmit = async (e) => {
+    e.preventDefault();
 
     if (!title || !date) {
-        return res.status(400).send({ message: 'Title and date are required.' });
+      setError("Title and Date are required.");
+      return;
     }
+
+    const newEvent = { 
+      title, 
+      description, 
+      date, 
+      time, 
+      userId: currentUser ? currentUser.username : "anonymous" 
+    };
+    
+    setLoading(true);
+    setError(null);
 
     try {
-        let timeValue = time;
-        if (!timeValue || timeValue === '09:00' || timeValue.trim() === '') {
-            timeValue = null; 
-        } 
-        
-        const finalDescription = description && description.trim() !== '' ? description : null;
-        
-        const result = await pool.request()
-            .input('title', sql.NVarChar(100), title)
-            .input('description', sql.NVarChar(sql.MAX), finalDescription) 
-            .input('date', sql.Date, date) 
-            .input('time', sql.Time, timeValue)
-            .input('userId', sql.NVarChar(50), userId || 'anonymous')
-            .query(`
-                INSERT INTO Events (title, description, date, time, userId)
-                OUTPUT inserted.id, inserted.title, inserted.description, CONVERT(NVARCHAR, inserted.date, 23) as date, CONVERT(NVARCHAR, inserted.time, 8) as time, inserted.userId
-                VALUES (@title, @description, @date, @time, @userId)
-            `);
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newEvent),
+      });
 
-        res.status(201).json(result.recordset[0]);
+      if (!response.ok) {
+        throw new Error('Failed to add event to backend.');
+      }
+
+      await fetchEvents();
+
+      // Clear form
+      setTitle('');
+      setDescription('');
+      setDate('');
+      setTime('09:00');
+
     } catch (err) {
-        console.error("POST /api/events failure: FULL ERROR:", err.message);
-        res.status(500).send({ message: 'Database query failed.', error: err.message });
+      setError(`Error submitting event: ${err.message}`);
+    } finally {
+      setLoading(false);
     }
-});
+  };
 
-// Serve static files
-app.use(express.static(path.join(__dirname, '..', 'client', 'build')));
+  // --- Render Logic ---
+  if (!currentUser) {
+    return <AuthScreen onLogin={(user) => setCurrentUser(user)} />;
+  }
 
-app.get('*', (req, res) => {
-    if (!req.url.startsWith('/api')) {
-        res.sendFile(path.join(__dirname, '..', 'client', 'build', 'index.html'));
-    }
-});
+  return (
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-8 font-sans">
+      <div className="max-w-6xl mx-auto">
 
-app.listen(port, () => {
-    console.log(`Node.js API listening on port ${port}`);
-});
+        {/* Header with Logout */}
+        <header className="py-6 mb-8 border-b-2 border-indigo-100 flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-extrabold text-indigo-900 tracking-tight">
+              FAU Events
+            </h1>
+            <p className="text-gray-500 mt-1">Welcome, {currentUser.username}</p>
+          </div>
+          <button 
+            onClick={() => setCurrentUser(null)}
+            className="text-sm text-red-600 hover:text-red-800 font-medium border border-red-200 px-3 py-1 rounded-md hover:bg-red-50"
+          >
+            Logout
+          </button>
+        </header>
+
+        {/* Error/Loading Feedback */}
+        {error && (
+          <div className="p-3 mb-4 text-sm text-red-800 bg-red-100 rounded-lg" role="alert">
+            {typeof error === 'string' ? error : 'An error occurred'}
+          </div>
+        )}
+        {loading && (
+          <div className="p-3 mb-4 text-sm text-blue-800 bg-blue-100 rounded-lg animate-pulse">
+            Loading data...
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+          {/* Column 1: Add New Event Form */}
+          <section className="lg:col-span-1 p-6 bg-white rounded-2xl shadow-xl h-fit sticky top-8">
+            <h2 className="text-xl font-bold text-gray-800 mb-6 border-b pb-3">Schedule New Event</h2>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-1">Event Title *</label>
+                <input
+                  type="text"
+                  id="title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="e.g., Database Systems Exam"
+                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                  required
+                />
+              </div>
+              
+              <div>
+                <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <textarea
+                  id="description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Event details..."
+                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                  rows="2"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+                <input
+                  type="date"
+                  id="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                  required
+                />
+              </div>
+              
+              <div>
+                <label htmlFor="time" className="block text-sm font-medium text-gray-700 mb-1">Time</label>
+                <input
+                  type="time"
+                  id="time"
+                  value={time}
+                  onChange={(e) => setTime(e.target.value)}
+                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2 px-4 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 transition duration-150 disabled:bg-indigo-400"
+              >
+                {loading ? 'Adding...' : 'Add Event'}
+              </button>
+            </form>
+          </section>
+
+          {/* Column 2 & 3: Event List */}
+          <section className="lg:col-span-2">
+            <h2 className="text-xl font-bold text-gray-800 mb-6 border-b pb-3">Upcoming Events ({events.length})</h2>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {events.length > 0 ? (
+                events.map(event => (
+                  <EventCard key={event.id} event={event} />
+                ))
+              ) : (
+                <div className="md:col-span-2 p-6 text-center bg-white rounded-lg shadow-inner text-gray-500">
+                  No events found.
+                </div>
+              )}
+            </div>
+          </section>
+
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default App;
