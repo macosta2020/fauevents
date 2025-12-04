@@ -304,16 +304,41 @@ const App = () => {
   };
 
   // --- Filtering and Sorting Logic ---
-  const filteredEvents = events.filter(event => {
-    if (!searchTerm.trim()) return true;
-    return event.title.toLowerCase().includes(searchTerm.toLowerCase());
+  const now = new Date();
+  
+  // Separate events into upcoming and past
+  const upcomingEvents = events.filter(event => {
+    const eventDate = new Date(`${event.date}T${event.time || '23:59:59'}`);
+    return eventDate >= now;
+  });
+  
+  const pastEvents = events.filter(event => {
+    const eventDate = new Date(`${event.date}T${event.time || '00:00:00'}`);
+    return eventDate < now;
   });
 
-  const sortedEvents = [...filteredEvents].sort((a, b) => {
-    const dateA = new Date(`${a.date}T${a.time || '00:00:00'}`);
-    const dateB = new Date(`${b.date}T${b.time || '00:00:00'}`);
-    return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
-  });
+  // Apply search filter
+  const filterBySearch = (eventList) => {
+    if (!searchTerm.trim()) return eventList;
+    return eventList.filter(event => 
+      event.title.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  };
+
+  const filteredUpcoming = filterBySearch(upcomingEvents);
+  const filteredPast = filterBySearch(pastEvents);
+
+  // Sort events
+  const sortEvents = (eventList) => {
+    return [...eventList].sort((a, b) => {
+      const dateA = new Date(`${a.date}T${a.time || '00:00:00'}`);
+      const dateB = new Date(`${b.date}T${b.time || '00:00:00'}`);
+      return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+    });
+  };
+
+  const sortedUpcoming = sortEvents(filteredUpcoming);
+  const sortedPast = sortEvents(filteredPast);
 
   // --- Render Logic ---
   if (!currentUser) {
@@ -422,7 +447,7 @@ const App = () => {
             <div className="mb-6 border-b pb-3">
               <div className="flex flex-row justify-between items-center mb-4">
                 <h2 className="text-xl font-bold text-gray-800">
-                  Upcoming Events ({filteredEvents.length}{searchTerm && ` of ${events.length}`})
+                  Events ({filteredUpcoming.length + filteredPast.length}{searchTerm && ` of ${events.length}`})
                 </h2>
                 
                 {/* SORTING DROPDOWN */}
@@ -452,16 +477,40 @@ const App = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {sortedEvents.length > 0 ? (
-                sortedEvents.map(event => (
-                  <EventCard key={event.id} event={event} onDelete={handleDelete} currentUser={currentUser} />
-                ))
-              ) : (
-                <div className="md:col-span-2 p-6 text-center bg-white rounded-lg shadow-inner text-gray-500">
-                  No events found.
-                </div>
-              )}
+            {/* Upcoming Events Section */}
+            <div className="mb-8">
+              <h3 className="text-lg font-semibold text-gray-700 mb-4">
+                Upcoming Events ({filteredUpcoming.length}{searchTerm && ` of ${upcomingEvents.length}`})
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {sortedUpcoming.length > 0 ? (
+                  sortedUpcoming.map(event => (
+                    <EventCard key={event.id} event={event} onDelete={handleDelete} currentUser={currentUser} />
+                  ))
+                ) : (
+                  <div className="md:col-span-2 p-6 text-center bg-white rounded-lg shadow-inner text-gray-500">
+                    {searchTerm ? 'No upcoming events match your search.' : 'No upcoming events.'}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Past Events Section */}
+            <div className="mt-8 pt-8 border-t border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-700 mb-4">
+                Past Events ({filteredPast.length}{searchTerm && ` of ${pastEvents.length}`})
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {sortedPast.length > 0 ? (
+                  sortedPast.map(event => (
+                    <EventCard key={event.id} event={event} onDelete={handleDelete} currentUser={currentUser} />
+                  ))
+                ) : (
+                  <div className="md:col-span-2 p-6 text-center bg-white rounded-lg shadow-inner text-gray-500">
+                    {searchTerm ? 'No past events match your search.' : 'No past events.'}
+                  </div>
+                )}
+              </div>
             </div>
           </section>
 
