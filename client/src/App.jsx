@@ -80,10 +80,17 @@ const App = () => {
       return;
     }
 
-    // FIX: Ensure time has seconds (HH:MM:SS) to satisfy SQL Server strict validation
-    let formattedTime = time;
-    if (time && time.length === 5) {
-       formattedTime = `${time}:00`;
+    // FIX: Force time to strict 24-hour HH:mm:ss format
+    let formattedTime = null;
+    if (time) {
+        const parts = time.split(':');
+        if (parts.length >= 2) {
+            // Ensure leading zeros (e.g., "9:00" -> "09")
+            const hours = parts[0].padStart(2, '0');
+            const minutes = parts[1].padStart(2, '0');
+            // Append seconds to satisfy SQL Server
+            formattedTime = `${hours}:${minutes}:00`;
+        }
     }
 
     // Hardcoded user ID since login is disabled
@@ -91,7 +98,7 @@ const App = () => {
       title, 
       description, 
       date, 
-      time: formattedTime, // Send the SQL-safe time string
+      time: formattedTime, 
       userId: "anonymous_user" 
     };
     
