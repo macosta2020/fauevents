@@ -19,11 +19,128 @@ const EventCard = ({ event }) => (
   </div>
 );
 
+// --- Auth Component (Login/Register) ---
+const AuthScreen = ({ onLogin }) => {
+  const [isLogin, setIsLogin] = useState(true);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const API_BASE = ''; 
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    const endpoint = isLogin ? '/api/login' : '/api/register';
+    const payload = isLogin ? { username, password } : { username, password, email };
+
+    try {
+      const response = await fetch(API_BASE + endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || data.error || 'Authentication failed');
+      }
+
+      if (isLogin) {
+        onLogin(data.user);
+      } else {
+        alert('Registration successful! Please login.');
+        setIsLogin(true);
+      }
+    } catch (err) {
+      setError(err.message || String(err) || "An unexpected error occurred");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4">
+      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-gray-200">
+        <h2 className="text-2xl font-bold text-indigo-900 mb-6 text-center">
+          {isLogin ? 'Login to Cloud Schedule' : 'Create Account'}
+        </h2>
+        
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 text-red-700 text-sm rounded-lg break-words">
+            {typeof error === 'string' ? error : 'An error occurred'}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+              required
+            />
+          </div>
+          
+          {!isLogin && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                required
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-2 px-4 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 transition duration-150 disabled:bg-indigo-400"
+          >
+            {loading ? 'Processing...' : (isLogin ? 'Login' : 'Register')}
+          </button>
+        </form>
+
+        <div className="mt-6 text-center text-sm text-gray-600">
+          {isLogin ? "Don't have an account? " : "Already have an account? "}
+          <button
+            onClick={() => { setIsLogin(!isLogin); setError(null); }}
+            className="text-indigo-600 font-semibold hover:underline"
+          >
+            {isLogin ? 'Register' : 'Login'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // --- Main Application Component ---
 const App = () => {
-  // CRITICAL FIX: Always use the relative path. SWA handles the absolute routing.
   const API_URL = '/api/events'; 
 
+  const [currentUser, setCurrentUser] = useState(null);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -33,12 +150,10 @@ const App = () => {
   const [date, setDate] = useState('');
   const [time, setTime] = useState('09:00');
 
-  // --- Fetch Data (GET) ---
   const fetchEvents = async () => {
     setLoading(true);
     setError(null);
     try {
-      // CORRECTED FETCH: Use API_URL directly
       const response = await fetch(API_URL);
       
       if (!response.ok) {
@@ -48,17 +163,14 @@ const App = () => {
       const data = await response.json();
       setEvents(data);
     } catch (err) {
-      setError(`Failed to fetch events from API: ${err.message}. Using mock data.`);
-      setEvents([
-        { id: 99, title: "Mock Team Sync", description: "Review Azure SQL Connection.", date: "2025-12-05", time: "10:00", userId: "local-dev" },
-      ]);
+      setError(`Failed to fetch events: ${err.message}`);
+      setEvents([]);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    // Dynamically inject Tailwind CSS
     const scriptId = 'tailwind-cdn';
     if (!document.getElementById(scriptId)) {
       const script = document.createElement('script');
@@ -67,10 +179,11 @@ const App = () => {
       document.head.appendChild(script);
     }
 
-    fetchEvents();
-  }, []);
+    if (currentUser) {
+      fetchEvents();
+    }
+  }, [currentUser]);
 
-  // --- Submit Data (POST) ---
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -79,52 +192,74 @@ const App = () => {
       return;
     }
 
-    const newEvent = { title, description, date, time, userId: "current_user_1" };
+    const newEvent = { 
+      title, 
+      description, 
+      date, 
+      time, 
+      userId: currentUser ? currentUser.username : "anonymous" 
+    };
+    
     setLoading(true);
     setError(null);
 
     try {
-      // CORRECTED FETCH: Use API_URL directly
       const response = await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newEvent),
       });
 
+      // Capture the detailed error from the backend JSON response
+      const data = await response.json();
+
       if (!response.ok) {
-        throw new Error('Failed to add event to backend.');
+        // Use the backend's 'error' or 'message' field
+        throw new Error(data.error || data.message || 'Failed to add event to backend.');
       }
 
       await fetchEvents();
 
-      // Clear form
       setTitle('');
       setDescription('');
       setDate('');
       setTime('09:00');
 
     } catch (err) {
-      setError(`Error submitting event: ${err.message}`);
+      // Display the specific backend error in the UI
+      setError(`Submission Failed: ${err.message}`);
     } finally {
       setLoading(false);
     }
   };
 
+  if (!currentUser) {
+    return <AuthScreen onLogin={(user) => setCurrentUser(user)} />;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-8 font-sans">
       <div className="max-w-6xl mx-auto">
 
-        {/* Header */}
-        <header className="py-6 mb-8 border-b-2 border-indigo-100">
-          <h1 className="text-3xl font-extrabold text-indigo-900 tracking-tight">
-            FAU Events
-          </h1>
-          <p className="text-gray-500 mt-1">Event Scheduler</p>
+        {/* Header with Logout */}
+        <header className="py-6 mb-8 border-b-2 border-indigo-100 flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-extrabold text-indigo-900 tracking-tight">
+              FAU Events
+            </h1>
+            <p className="text-gray-500 mt-1">Welcome, {currentUser.username}</p>
+          </div>
+          <button 
+            onClick={() => setCurrentUser(null)}
+            className="text-sm text-red-600 hover:text-red-800 font-medium border border-red-200 px-3 py-1 rounded-md hover:bg-red-50"
+          >
+            Logout
+          </button>
         </header>
 
         {/* Error/Loading Feedback */}
         {error && (
-          <div className="p-3 mb-4 text-sm text-red-800 bg-red-100 rounded-lg" role="alert">
+          <div className="p-3 mb-4 text-sm text-red-800 bg-red-100 rounded-lg border border-red-200">
             {typeof error === 'string' ? error : 'An error occurred'}
           </div>
         )}
@@ -153,17 +288,6 @@ const App = () => {
                   required
                 />
               </div>
-              <div>
-                <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
-                <input
-                  type="date"
-                  id="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
-                  required
-                />
-              </div>
               
               <div>
                 <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">Description</label>
@@ -174,6 +298,18 @@ const App = () => {
                   placeholder="Event details..."
                   className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
                   rows="2"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+                <input
+                  type="date"
+                  id="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                  required
                 />
               </div>
               
