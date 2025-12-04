@@ -5,7 +5,7 @@ const EventCard = ({ event }) => (
   <div className="p-4 bg-white rounded-xl shadow-md transition duration-300 hover:shadow-lg border border-gray-100">
     <h3 className="text-lg font-semibold text-gray-800">{event.title}</h3>
     <p className="text-sm text-indigo-600 font-medium mt-1">
-      {new Date(event.date).toLocaleDateString()} @ {event.time}
+      {new Date(event.date).toLocaleDateString()} {event.time ? `@ ${event.time}` : ''}
     </p>
     <p className="text-gray-500 text-sm mt-2">{event.description}</p>
     <div className="mt-3 flex space-x-2 text-xs">
@@ -21,13 +21,17 @@ const EventCard = ({ event }) => (
 
 // --- Main Application Component ---
 const App = () => {
-  // CRITICAL FIX: Always use the relative path. SWA handles the absolute routing.
+  // API Endpoint
   const API_URL = '/api/events'; 
 
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  
+  // Sorting State
+  const [sortOrder, setSortOrder] = useState('asc'); // Default to 'Oldest First'
 
+  // Form State
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState('');
@@ -38,7 +42,6 @@ const App = () => {
     setLoading(true);
     setError(null);
     try {
-      // CORRECTED FETCH: Use API_URL directly
       const response = await fetch(API_URL);
       
       if (!response.ok) {
@@ -48,18 +51,15 @@ const App = () => {
       const data = await response.json();
       setEvents(data);
     } catch (err) {
-      setError(`Failed to fetch events from API: ${err.message}. Using mock data.`);
-      // Mock Data (if API is unreachable during local testing)
-      setEvents([
-        { id: 99, title: "Mock Team Sync", description: "Review Azure SQL Connection.", date: "2025-12-05", time: "10:00", userId: "local-dev" },
-      ]);
+      setError(`Failed to fetch events: ${err.message}`);
+      setEvents([]);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    // Dynamically inject Tailwind CSS if missing
+    // Dynamically inject Tailwind CSS
     const scriptId = 'tailwind-cdn';
     if (!document.getElementById(scriptId)) {
       const script = document.createElement('script');
@@ -80,45 +80,26 @@ const App = () => {
       return;
     }
 
-    // FIX: Force time to strict 24-hour HH:mm:ss format
-    let formattedTime = null;
-    if (time) {
-        const parts = time.split(':');
-        if (parts.length >= 2) {
-            // Ensure leading zeros (e.g., "9:00" -> "09")
-            const hours = parts[0].padStart(2, '0');
-            const minutes = parts[1].padStart(2, '0');
-            // Append seconds to satisfy SQL Server
-            formattedTime = `${hours}:${minutes}:00`;
-        }
-    }
+    let timeValue = time;
+    if (!timeValue || timeValue.trim() === '') {
+        timeValue = null; 
+    } 
 
-    // Hardcoded user ID since login is disabled
-    const newEvent = { 
-      title, 
-      description, 
-      date, 
-      time: formattedTime, 
-      userId: "anonymous_user" 
-    };
-    
+    const newEvent = { title, description, date, time: timeValue, userId: "anonymous_user" };
     setLoading(true);
     setError(null);
 
     try {
-      // CORRECTED FETCH: Use API_URL directly
       const response = await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newEvent),
       });
 
-      // Capture the detailed error from the backend JSON response
       const data = await response.json();
 
       if (!response.ok) {
-        // Use the backend's 'error' or 'message' field
-        throw new Error(data.error || data.message || 'Failed to add event to backend.');
+        throw new Error(data.error || data.message || 'Failed to add event.');
       }
 
       await fetchEvents();
@@ -135,6 +116,16 @@ const App = () => {
       setLoading(false);
     }
   };
+
+  // --- Sorting Logic ---
+  const sortedEvents = [...events].sort((a, b) => {
+    // Create comparable dates by combining date and time
+    // Note: a.date is YYYY-MM-DD, a.time is HH:MM:SS or null
+    const dateA = new Date(`${a.date}T${a.time || '00:00:00'}`);
+    const dateB = new Date(`${b.date}T${b.time || '00:00:00'}`);
+    
+    return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+  });
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-8 font-sans">
@@ -179,17 +170,6 @@ const App = () => {
                   required
                 />
               </div>
-              <div>
-                <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
-                <input
-                  type="date"
-                  id="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
-                  required
-                />
-              </div>
               
               <div>
                 <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">Description</label>
@@ -200,6 +180,18 @@ const App = () => {
                   placeholder="Event details..."
                   className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
                   rows="2"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+                <input
+                  type="date"
+                  id="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                  required
                 />
               </div>
               
@@ -224,13 +216,29 @@ const App = () => {
             </form>
           </section>
 
-          {/* Column 2 & 3: Event List */}
+          {/* Column 2 & 3: Event List with Sorting */}
           <section className="lg:col-span-2">
-            <h2 className="text-xl font-bold text-gray-800 mb-6 border-b pb-3">Upcoming Events ({events.length})</h2>
+            <div className="flex flex-row justify-between items-center mb-6 border-b pb-3">
+              <h2 className="text-xl font-bold text-gray-800">Upcoming Events ({events.length})</h2>
+              
+              {/* SORTING DROPDOWN */}
+              <div className="flex items-center space-x-2">
+                <label htmlFor="sort" className="text-sm text-gray-600 font-medium">Sort by:</label>
+                <select
+                  id="sort"
+                  value={sortOrder}
+                  onChange={(e) => setSortOrder(e.target.value)}
+                  className="p-2 text-sm border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                >
+                  <option value="asc">Oldest First (Date ↑)</option>
+                  <option value="desc">Newest First (Date ↓)</option>
+                </select>
+              </div>
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {events.length > 0 ? (
-                events.map(event => (
+              {sortedEvents.length > 0 ? (
+                sortedEvents.map(event => (
                   <EventCard key={event.id} event={event} />
                 ))
               ) : (
