@@ -89,7 +89,9 @@ app.post('/api/events', async (req, res) => {
             .input('title', sql.NVarChar(100), title)
             .input('description', sql.NVarChar(sql.MAX), finalDescription) 
             .input('date', sql.Date, date) 
-            .input('time', sql.Time, timeValue)
+            // FIX: Use NVarChar instead of Time to bypass strict driver validation.
+            // SQL Server will implicitly convert the string '09:00' to TIME correctly.
+            .input('time', sql.NVarChar(50), timeValue)
             .input('userId', sql.NVarChar(50), userId || 'anonymous')
             .query(`
                 INSERT INTO Events (title, description, date, time, userId)
