@@ -31,17 +31,136 @@ const EventCard = ({ event, onDelete }) => (
   </div>
 );
 
+// --- Auth Component (Login/Register) ---
+const AuthScreen = ({ onLogin }) => {
+  const [isLogin, setIsLogin] = useState(true);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const API_BASE = ''; 
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    const endpoint = isLogin ? '/api/login' : '/api/register';
+    const payload = isLogin ? { username, password } : { username, password, email };
+
+    try {
+      const response = await fetch(API_BASE + endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Authentication failed');
+      }
+
+      if (isLogin) {
+        onLogin(data.user);
+      } else {
+        alert('Registration successful! Please login.');
+        setIsLogin(true);
+      }
+    } catch (err) {
+      setError(err.message || String(err) || "An unexpected error occurred");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4">
+      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-gray-200">
+        <h2 className="text-2xl font-bold text-indigo-900 mb-6 text-center">
+          {isLogin ? 'Login to Cloud Schedule' : 'Create Account'}
+        </h2>
+        
+        {error && (
+          <div className="mb-4 p-3 bg-red-100 text-red-700 text-sm rounded-lg">
+            {typeof error === 'string' ? error : 'An error occurred'}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+              required
+            />
+          </div>
+          
+          {!isLogin && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                required
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+              required
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-2 px-4 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 transition duration-150 disabled:bg-indigo-400"
+          >
+            {loading ? 'Processing...' : (isLogin ? 'Login' : 'Register')}
+          </button>
+        </form>
+
+        <div className="mt-6 text-center text-sm text-gray-600">
+          {isLogin ? "Don't have an account? " : "Already have an account? "}
+          <button
+            onClick={() => { setIsLogin(!isLogin); setError(null); }}
+            className="text-indigo-600 font-semibold hover:underline"
+          >
+            {isLogin ? 'Register' : 'Login'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // --- Main Application Component ---
 const App = () => {
-  // API Endpoint
   const API_URL = '/api/events'; 
+
+  // Auth State
+  const [currentUser, setCurrentUser] = useState(null);
 
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   
   // Sorting State
-  const [sortOrder, setSortOrder] = useState('asc'); // Default to 'Oldest First'
+  const [sortOrder, setSortOrder] = useState('asc');
 
   // Form State
   const [title, setTitle] = useState('');
@@ -71,7 +190,6 @@ const App = () => {
   };
 
   useEffect(() => {
-    // Dynamically inject Tailwind CSS
     const scriptId = 'tailwind-cdn';
     if (!document.getElementById(scriptId)) {
       const script = document.createElement('script');
@@ -80,8 +198,10 @@ const App = () => {
       document.head.appendChild(script);
     }
 
-    fetchEvents();
-  }, []);
+    if (currentUser) {
+      fetchEvents();
+    }
+  }, [currentUser]);
 
   // --- Submit Data (POST) ---
   const handleSubmit = async (e) => {
@@ -97,7 +217,14 @@ const App = () => {
         timeValue = null; 
     } 
 
-    const newEvent = { title, description, date, time: timeValue, userId: "anonymous_user" };
+    const newEvent = { 
+      title, 
+      description, 
+      date, 
+      time: timeValue, 
+      userId: currentUser ? currentUser.username : "anonymous" 
+    };
+    
     setLoading(true);
     setError(null);
 
@@ -116,7 +243,6 @@ const App = () => {
 
       await fetchEvents();
 
-      // Clear form
       setTitle('');
       setDescription('');
       setDate('');
@@ -142,19 +268,14 @@ const App = () => {
       });
 
       if (!response.ok) {
-        const data = await response.json().catch(() => ({})); // Handle cases with no JSON response
+        const data = await response.json().catch(() => ({}));
         throw new Error(data.error || data.message || `Failed to delete event (Status: ${response.status})`);
       }
 
-      // Remove the deleted event from state immediately for better UI responsiveness
       setEvents(prevEvents => prevEvents.filter(event => event.id !== id));
-      
-      // Optional: Re-fetch to ensure sync
-      // await fetchEvents(); 
 
     } catch (err) {
       setError(`Error deleting event: ${err.message}`);
-      // If optimistic update failed, re-fetch
       await fetchEvents();
     } finally {
       setLoading(false);
@@ -163,24 +284,34 @@ const App = () => {
 
   // --- Sorting Logic ---
   const sortedEvents = [...events].sort((a, b) => {
-    // Create comparable dates by combining date and time
-    // Note: a.date is YYYY-MM-DD, a.time is HH:MM:SS or null
     const dateA = new Date(`${a.date}T${a.time || '00:00:00'}`);
     const dateB = new Date(`${b.date}T${b.time || '00:00:00'}`);
-    
     return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
   });
+
+  // --- Render Logic ---
+  if (!currentUser) {
+    return <AuthScreen onLogin={(user) => setCurrentUser(user)} />;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 sm:p-8 font-sans">
       <div className="max-w-6xl mx-auto">
 
-        {/* Header */}
-        <header className="py-6 mb-8 border-b-2 border-indigo-100">
-          <h1 className="text-3xl font-extrabold text-indigo-900 tracking-tight">
-            FAU Events
-          </h1>
-          <p className="text-gray-500 mt-1">Event Scheduler</p>
+        {/* Header with Logout */}
+        <header className="py-6 mb-8 border-b-2 border-indigo-100 flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-extrabold text-indigo-900 tracking-tight">
+              FAU Events
+            </h1>
+            <p className="text-gray-500 mt-1">Welcome, {currentUser.username}</p>
+          </div>
+          <button 
+            onClick={() => setCurrentUser(null)}
+            className="text-sm text-red-600 hover:text-red-800 font-medium border border-red-200 px-3 py-1 rounded-md hover:bg-red-50"
+          >
+            Logout
+          </button>
         </header>
 
         {/* Error/Loading Feedback */}
